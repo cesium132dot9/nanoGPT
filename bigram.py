@@ -6,6 +6,7 @@ from torch.nn import functional as F
 batch_size = 32
 block_size = 8
 max_iters = 3000
+eval_interval = 300
 learning_rate = 1e-3
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 eval_iters = 200
@@ -20,8 +21,7 @@ with open('input.txt', 'r', encoding='utf-8') as f:
 # all the unique characters that appear in text
 chars = sorted(list(set(text)))
 vocab_size = len(chars)
-
-# create a mapping
+# creating a mapping 
 stoi = {char : i for i, char in enumerate(chars)}
 itos = {i : char for i, char in enumerate(chars)}
 encode = lambda s : [stoi[char] for char in s] 
@@ -41,6 +41,21 @@ def get_batches(split):
     y = torch.stack([data[i+1:i+block_size+1] for i in ix])
     x, y = x.to(device), y.to(device)
     return x, y
+
+# average loss over eval_iters, less noisy
+@torch.no_grad()
+def estimate_loss(): 
+    out = {}
+    model.eval()
+    for split in ['train', 'val']: 
+        losses = torch.zeros(eval_iters)
+        for i in range(eval_iters): 
+            X, Y = get_batches(split)
+            logits, loss = model(X, Y)
+            losses[i] = loss.item()
+        out[split] = losses.mean()
+    model.train()
+    return out
 
 # Bigram Language Model
 class BigramLanguageModel(nn.Module): 
@@ -78,14 +93,20 @@ m = model.to(device)
 # create an optimizer 
 optimizer = torch.optim.AdamW(m.parameters(), learning_rate)
 
-for iters  in range(max_iters): 
+for iter in range(max_iters): 
+    # after every eval_interval steps print the average loss of the model 
+    if iter % eval_interval == 0: 
+        losses = estimate_loss()
+        print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+
     xb, yb = get_batches("train")
 
+    # evaluate the losss
     logits, loss = m(xb, yb)
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
     optimizer.step()
 
 # generate from the model
-idx = torch.zeros((1, 1), dtype=torch.long)
-print(decode(m.generate(idx, max_new_tokens=400).tolist()))
+idx = torch.zeros((1, 1), dtype=torch.long, device=device)
+print(decode(m.generate(idx, max_new_tokens=500)[0].tolist()))
