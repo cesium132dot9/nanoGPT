@@ -63,12 +63,18 @@ class BigramLanguageModel(nn.Module):
     def __init__(self): 
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
+        self.position_embedding_table = nn.Embedding(block_size, n_embd)
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
     def forward(self, idx, targets=None): 
+        B, T = idx.shape
+
         # both idx and targets are of dimension (B, T) tensors
         tok_emb = self.token_embedding_table(idx) # (B, T, n_embd)
-        logits = self.lm_head(tok_emb) # (B, T, vocab_size)
+        pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T, C)
+        x = tok_emb + pos_emb # (B, T, C) 
+        # x is not just the token identities but also the positions of where the tokens occur
+        logits = self.lm_head(x) # (B, T, vocab_size)
 
         if targets is None: 
             loss = None
@@ -90,7 +96,7 @@ class BigramLanguageModel(nn.Module):
             idx = torch.cat((idx, idx_next), dim=1) # (B, T+1)
         return idx
     
-model = BigramLanguageModel(vocab_size)
+model = BigramLanguageModel()
 m = model.to(device)
 
 # create an optimizer 
