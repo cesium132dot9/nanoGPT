@@ -5,8 +5,8 @@ from torch.nn import functional as F
 # hyperparameter
 batch_size = 32
 block_size = 8
-max_iters = 3000
-eval_interval = 300
+max_iters = 5000
+eval_interval = 500
 learning_rate = 1e-3
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 eval_iters = 200
@@ -57,6 +57,15 @@ def estimate_loss():
         out[split] = losses.mean()
     model.train()
     return out
+
+class Head(nn.Module): 
+    def __init__(self, head_size):
+        super().__init__()
+        self.key = nn.Linear(n_embd, head_size, bias=False)
+        self.query = nn.Linear(n_embd, head_size, bias=False)
+        self.value = nn.Linear(n_embd, head_size, bias=False)
+        
+
 
 # Bigram Language Model
 class BigramLanguageModel(nn.Module): 
