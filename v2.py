@@ -63,6 +63,7 @@ class Head(nn.Module):
 
     def __init__(self, head_size):
         super().__init__()
+        self.head_size = head_size
         self.key = nn.Linear(n_embd, head_size, bias=False)
         self.query = nn.Linear(n_embd, head_size, bias=False)
         self.value = nn.Linear(n_embd, head_size, bias=False)
@@ -73,7 +74,7 @@ class Head(nn.Module):
         k = self.key(x) # (B, T, C)
         q = self.query(x) # (B, C, T)
         # compute affinities (attention scores)
-        wei = k @ q.transpose(-2, -1) * (C ** -0.5) # (B, T, C) @ (B, C, T) --> (B, T, T)
+        wei = k @ q.transpose(-2, -1) * (self.head_size ** -0.5) # (B, T, C) @ (B, C, T) --> (B, T, T)
         wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
         wei = F.softmax(wei, dim=-1)
         # perform the weighted aggregation of the values 
@@ -87,9 +88,12 @@ class MultiHeadAttention(nn.Module):
     def __init__(self, num_heads, head_size): 
         super().__init__()
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+        self.proj = nn.Linear(n_embd, n_embd)
 
     def forward(self, x): 
-        return torch.cat([h(x) for h in self.heads], dim=-1) # concatenating over the C (channel) dimension
+        out = torch.cat([h(x) for h in self.heads], dim=-1) # concatenating over the C (channel) dimension 
+        out = self.proj(out)
+        return out 
     
 class FeedForward(nn.Module): 
     """ a simple linear layer followed by a non-linearity """
@@ -97,12 +101,28 @@ class FeedForward(nn.Module):
     def __init__(self, n_embd): 
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(n_embd, n_embd),
-            nn.ReLu()
+            nn.Linear(n_embd, 4*n_embd),
+            nn.ReLU(n_embd), 
+            nn.Linear(4*n_embd, n_embd),
         )
     
     def forward(self, x): 
         return self.net(x)
+    
+class Block(nn.Module): 
+    """ Transformer block: communication followed by computation """
+
+    def __init__(self, n_embd, n_head): 
+        # n_embd: embedding dimensions, n_head: number of heads we'd like
+        super().__init__()
+        head_size = n_embd // n_head
+        self.sa = MultiHeadAttention(n_head, head_size)
+        self.ffwd = FeedForward(n_embd)
+
+    def forward(self, x): 
+        x = x + self.sa(x)
+        x = x + self.ffwd(x)
+        return x
 
 # Bigram Language Model
 class BigramLanguageModel(nn.Module): 
@@ -110,8 +130,11 @@ class BigramLanguageModel(nn.Module):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        self.sa_heads = MultiHeadAttention(4, n_embd//4) # 4 heads 8-dimensional self-attention 
-        self.ffwd = FeedForward(n_embd)
+        self.blocks = nn.Sequential(
+            Block(n_embd, n_head=4),
+            Block(n_embd, n_head=4),
+            Block(n_embd, n_head=4)
+        )
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
     def forward(self, idx, targets=None): 
@@ -122,9 +145,7 @@ class BigramLanguageModel(nn.Module):
         pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T, C)
         #  x is not just the token identities but also the positions of where the tokens occur
         x = tok_emb + pos_emb # (B, T, C)
-        # apply one head of self-attention
-        x = self.sa_heads(x) # (B, T, C)
-        x = self.ffwd(x) # (B, T, C)
+        x = self.blocks(x) # (B, T, C)
         logits = self.lm_head(x) # (B, T, vocab_size)
 
         if targets is None: 
@@ -140,8 +161,7 @@ class BigramLanguageModel(nn.Module):
     def generate(self, idx, max_new_tokens): 
         # idx is (B, T) array of indices in the current context 
         for _ in range(max_new_tokens): 
-            # crop idx to the last block_size tokens
-            idx_cond = idx[:, -block_size:]
+            idx_cond = idx[:, -block_size:] # crop idx to the last block_size tokens
             logits, loss = self(idx_cond) # get the predictions
             logits = logits[:, -1, :] # grabs the last element in the T (time) dimension, becomes (B, C)
             probs = F.softmax(logits, dim=-1) # (B, C)
