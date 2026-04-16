@@ -118,10 +118,12 @@ class Block(nn.Module):
         head_size = n_embd // n_head
         self.sa = MultiHeadAttention(n_head, head_size)
         self.ffwd = FeedForward(n_embd)
+        self.ln1 = nn.LayerNorm(n_embd)
+        self.ln2 = nn.LayerNorm(n_embd)
 
     def forward(self, x): 
-        x = x + self.sa(x)
-        x = x + self.ffwd(x)
+        x = x + self.sa(self.ln1(x))
+        x = x + self.ffwd(self.ln2(x))
         return x
 
 # Bigram Language Model
@@ -133,7 +135,8 @@ class BigramLanguageModel(nn.Module):
         self.blocks = nn.Sequential(
             Block(n_embd, n_head=4),
             Block(n_embd, n_head=4),
-            Block(n_embd, n_head=4)
+            Block(n_embd, n_head=4), 
+            nn.LayerNorm(n_embd),
         )
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
@@ -177,7 +180,7 @@ optimizer = torch.optim.AdamW(m.parameters(), learning_rate)
 
 for iter in range(max_iters): 
     # after every eval_interval steps print the average loss of the model 
-    if iter % eval_interval == 0: 
+    if iter % eval_interval == 0 or iter == 4999: 
         losses = estimate_loss()
         print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
 
