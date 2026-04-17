@@ -4,17 +4,17 @@ from torch.nn import functional as F
 from datetime import datetime
 
 # hyperparameter
-batch_size = 32#64 # how many independent sequences will we compute in parallel?
-block_size = 128#256 # what is the maximum context length for prediction? 
+batch_size = 64#32 # how many independent sequences will we compute in parallel?
+block_size = 256#128 # what is the maximum context length for prediction? 
 max_iters = 5000
 eval_interval = 500
 learning_rate = 1e-3#3e-4
-# device = 'cuda' if torch.cuda.is_available() else 'cpu'
-device = 'mps' if torch.backends.mps.is_available() else 'cpu'
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# device = 'mps' if torch.backends.mps.is_available() else 'cpu'
 eval_iters = 200
-n_embd = 128#384
-n_head = 4#6
-n_layer = 6
+n_embd = 384#128
+n_head = 6#4
+n_layer = 6#4
 dropout = 0.2
 # --------------
 
@@ -185,7 +185,12 @@ m = model.to(device)
 # create an optimizer 
 optimizer = torch.optim.AdamW(m.parameters(), learning_rate)
 
-print(datetime.now().strftime("%X"))
+
+print('--------------------')
+print(f'hyperparameters: batch size: {batch_size}, block size: {block_size}, embedding vector size: {n_embd}, number of heads (per multi-headed): {n_head}, number of layers: {n_layer}')
+print('--------------------')
+
+print(f'training start time: {datetime.now().strftime("%X")}')
 for iter in range(max_iters): 
     # after every eval_interval steps print the average loss of the model 
     if iter % eval_interval == 0 or iter == 4999: 
@@ -199,7 +204,7 @@ for iter in range(max_iters):
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
     optimizer.step()
-print(datetime.now().strftime("%X"))
+print(f'training end time: {datetime.now().strftime("%X")}')
 
 # generate from the model
 idx = torch.zeros((1, 1), dtype=torch.long, device=device)
