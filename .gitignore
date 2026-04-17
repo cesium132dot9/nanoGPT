@@ -1,2 +1,4 @@
 .python-version
 .vscode
+weights.pt
+test.py

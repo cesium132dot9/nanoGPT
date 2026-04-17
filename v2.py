@@ -190,13 +190,21 @@ print('--------------------')
 print(f'hyperparameters: batch size: {batch_size}, block size: {block_size}, embedding vector size: {n_embd}, number of heads (per multi-headed): {n_head}, number of layers: {n_layer}')
 print('--------------------')
 
-print(f'training start time: {datetime.now().strftime("%X")}')
+start_time = datetime.now()
+
+min_val_loss = float('inf')
+
 for iter in range(max_iters): 
     # after every eval_interval steps print the average loss of the model 
     if iter % eval_interval == 0 or iter == 4999: 
         losses = estimate_loss()
         print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
 
+        # save the state of the model with the min val loss
+        if losses['val'] < min_val_loss: 
+            min_val_loss = losses['val']
+            torch.save(m.state_dict(), 'weights.pt')
+    
     xb, yb = get_batches("train")
 
     # evaluate the losss
@@ -204,7 +212,16 @@ for iter in range(max_iters):
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
     optimizer.step()
-print(f'training end time: {datetime.now().strftime("%X")}')
+
+end_time = datetime.now()
+total_seconds = int((end_time - start_time).total_seconds())
+mins, secs = divmod(total_seconds, 60)
+hrs, mins = divmod(mins, 60)
+print(f'training length: {hrs}hr {mins}m {secs}s')
+
+# get the best model state
+m.load_state_dict(torch.load('weights.pt'))
+print(f'best val loss: {min_val_loss:.4f}')
 
 # generate from the model
 idx = torch.zeros((1, 1), dtype=torch.long, device=device)
